@@ -47,10 +47,18 @@ using Row = ck::tensor_layout::gemm::RowMajor;
 using Col = ck::tensor_layout::gemm::ColumnMajor;
 
 using ADataType = I8;
+using A2DataType = FP8;
+using A3DataType = F32;
 using BDataType = I8;
+using B2DataType = FP8;
+using B3DataType = F32;
 using AccDataType = I32;
+using Acc2DataType = F32;
 using CShuffleDataType = I32;
+using CShuffleDataType2 = F32;
 using ComputeDataType = I8;
+using DsDataType3 = ck::Tuple<>;
+using EDataType = B16
 
 using ALayout = Row;
 using BLayout = Col;
@@ -59,12 +67,14 @@ using D1Layout = Col;
 using D2Layout = Row;
 using DsLayout = ck::Tuple<D0Layout, D1Layout>;
 using DsLayout2 = ck::Tuple<D0Layout, D1Layout, D2Layout>;
+using DsLayout3 = ck::Tuple<>
 using ELayout = Row;
 
 using PassThrough = ck::tensor_operation::element_wise::PassThrough;
 
 using AElementOp = PassThrough;
 using BElementOp = PassThrough;
+using CDEElementOp = PassThrough;
 
 struct RowwiseScale
 {
@@ -320,6 +330,83 @@ using DeviceGemmHelperMMA =
         PIPELINE_VERSION,
         ComputeDataType>;
 
+template <
+    int BLOCK_SIZE,
+    int Scale_Block_M,
+    int Scale_Block_N,
+    int Scale_Block_K,
+    int MBLOCK,
+    int NBLOCK,
+    int KBLOCK,
+    int AK1,
+    int BK1,
+    int WAVE_TILE_M,
+    int WAVE_TILE_N,
+    int WAVE_MAP_M,
+    int WAVE_MAP_N,
+    typename ABLOCK_TRANSFER,
+    typename BBLOCK_TRANSFER,
+    typename CBLOCK_TRANSFER,
+    typename CBLOCK_SPV,
+    int CSHUFFLE_MX_PER_WAVE_PERSHUFFLE,
+    int CSHUFFLE_NX_PER_WAVE_PERSHUFFLE,
+    ck::BlockGemmPipelineScheduler LOOP_SCHED,
+    ck::BlockGemmPipelineVersion PIPELINE_VERSION,
+    auto GEMM_SPEC =
+        ck::tensor_operation::device::GemmSpecialization::MNKPadding>
+using DeviceGemmHelperMMA =
+    ck::tensor_operation::device::DeviceGemmMultiD_ABScale_Xdl_CShuffle_V3<
+        ALayout,
+        BLayout,
+        DsLayout3,
+        ELayout,
+        A2DataType,
+        A3DataType,
+        B2DataType,
+        B3DataType,
+        AccDataType2,
+        CShuffleDataType2,
+        AElementOp,
+        BElementOp,
+        CDEElementOp,
+        GEMM_SPEC,
+        BLOCK_SIZE,                      // Block Size
+        Scale_Block_M,                   // Scale Block M
+        Scale_Block_N,                   // Scale Block N
+        Scale_Block_K,                   // Scale Block K
+        MBLOCK,                          // M per Block
+        NBLOCK,                          // N per Block
+        KBLOCK,                          // K per Block
+        AK1,                             // AK1
+        BK1,                             // BK1
+        WAVE_TILE_M,                     // M per Xdl
+        WAVE_TILE_N,                     // N per Xdl
+        WAVE_MAP_M,                      // Mxdl per Wave
+        WAVE_MAP_N,                      // Nxdl per Wave
+        ABLOCK_TRANSFER,
+        S<1, 0, 2>,
+        S<1, 0, 2>,
+        2,
+        KBLOCK / ABLOCK_TRANSFER{}.At(0),
+        KBLOCK / ABLOCK_TRANSFER{}.At(0),
+        0,
+        BBLOCK_TRANSFER,
+        S<1, 0, 2>,
+        S<1, 0, 2>,
+        2,
+        16,
+        16,
+        0,
+        CSHUFFLE_MX_PER_WAVE_PERSHUFFLE,
+        CSHUFFLE_NX_PER_WAVE_PERSHUFFLE,
+        CBLOCK_TRANSFER,
+        CBLOCK_SPV,
+        LOOP_SCHED,
+        PIPELINE_VERSION,
+        ComputeDataType>;
+
+
+
 template <typename DDataType, typename EDataType,
           typename DeviceGemmInstance>
 __forceinline__ torch::Tensor gemm_a8w8_rowwise_impl(
@@ -426,5 +513,53 @@ __forceinline__ torch::Tensor gemm_a8w8_mma_impl(
     invoker.Run(argument, StreamConfig{at::cuda::getCurrentCUDAStream().stream()});
     return Y;
 }
+
+template <typename DeviceGemmInstance, ck::index_t SplitK=1>
+__forceinline__ torch::Tensor gemm_a8w8_blockwise_impl(
+    torch::Tensor& XQ,
+    torch::Tensor& WQ,
+    torch::Tensor& x_scale,
+    torch::Tensor& w_scale,
+    torch::Tensor& Y)
+{
+    int M = XQ.size(0);
+    int N = WQ.size(0);
+    int K = XQ.size(1);
+
+    int StrideA = XQ.stride(-2);
+    int StrideB = WQ.stride(-2);
+    int StrideE = N;
+
+    auto device_gemm = DeviceGemmInstance{};
+    auto invoker = device_gemm.MakeInvoker();
+
+    auto a_element_op = AElementOp{};
+    auto b_element_op = BElementOp{};
+    auto cde_element_op = CDEElementOp{};
+
+    constexpr ck::index_t NumDTensor = DsDataType::Size();
+    auto argument  = device_gemm.MakeArgument(XQ.data_ptr(),
+                        WQ.data_ptr(),
+                        std::array<const void*, NumDTensor>{},
+                        Y.data_ptr(),
+                        M,
+                        N,
+                        K,
+                        StrideA,
+                        StrideB,
+                        std::array<ck::index_t, NumDTensor>{},
+                        StrideE,
+                        x_scale.data_ptr(),
+                        w_scale.data_ptr(),
+                        a_element_op,
+                        b_element_op,
+                        cde_element_op);
+
+    TORCH_CHECK(device_gemm.IsSupportedArgument(argument), "This GEMM is not supported!");
+
+    invoker.Run(argument, StreamConfig{at::cuda::getCurrentCUDAStream().stream()});
+    return Y;
+}
+
 
 #endif // USE_ROCM
