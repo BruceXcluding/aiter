@@ -56,6 +56,7 @@ def asm_moe(hidden_states,
             expert_mask=None
             ):
     E, model_dim, inter_dim = w2.shape
+    local_E = E
     if expert_mask is not None:
         E = expert_mask.numel()
     M, topk = topk_ids.shape
@@ -112,8 +113,8 @@ def asm_moe(hidden_states,
         aiter.fmoe_fp8_blockscale_g1u1(moe_buf, a8, w1, w2, sorted_ids,
                                        sorted_weights, sorted_expert_ids, num_tokens_post_padded,
                                        topk,
-                                       fc1_scale.view(E, -1),
-                                       fc2_scale.view(E, -1),
+                                       fc1_scale.view(local_E, -1),
+                                       fc2_scale.view(local_E, -1),
                                        a8_scale.t().contiguous(),
                                        scale_blk_n,
                                        scale_blk_k,
