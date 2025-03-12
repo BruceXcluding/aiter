@@ -90,9 +90,12 @@ def log_args(func, *args, **kwargs):
                 el = list(el[:viewNum])+['...']
             return f'\n{" "*(len(prefix)+31)}'.join(['(']+[f" {getTensorInfo(e)}" for e in el]+[')'])
         return el
+    prefix = f"calling {func.__name__}("
+    blanks = ' '*len(prefix)
     callargs = [f"{el:<28} = {getTensorInfo(callargs[el])}" for el in callargs]
     callargs = f',\n{blanks}'.join(callargs)
     logger.info(f"\n{prefix}{callargs})")
+
 
 def get_trace_perf(prof, num_iters):
     assert (num_iters > 1)
