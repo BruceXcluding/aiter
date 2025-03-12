@@ -83,13 +83,16 @@ def log_args(func, *args, **kwargs):
 
     def getTensorInfo(el):
         if isinstance(el, torch.Tensor):
-            return f'{el.shape} {el.dtype}'
+            return f'{el.shape} {el.dtype} {hex(el.data_ptr())}'
+        elif isinstance(el, tuple):
+            viewNum = 5
+            if len(el) > viewNum:
+                el = list(el[:viewNum])+['...']
+            return f'\n{" "*(len(prefix)+31)}'.join(['(']+[f" {getTensorInfo(e)}" for e in el]+[')'])
         return el
-    callargs = [
-        f"\n                {el:<28} = {getTensorInfo(callargs[el])}" for el in callargs]
-    logger.info(
-        f"    calling {func.__name__}({', '.join(callargs)})")
-
+    callargs = [f"{el:<28} = {getTensorInfo(callargs[el])}" for el in callargs]
+    callargs = f',\n{blanks}'.join(callargs)
+    logger.info(f"\n{prefix}{callargs})")
 
 def get_trace_perf(prof, num_iters):
     assert (num_iters > 1)

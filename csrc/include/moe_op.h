@@ -8,6 +8,16 @@ void topk_softmax(torch::Tensor &topk_weights, torch::Tensor &topk_indices,
                   torch::Tensor &gating_output,
                   bool need_renorm);
 
+void biased_grouped_topk(
+    torch::Tensor &gating_output,   // [num_tokens, num_experts]
+    torch::Tensor &correction_bias, // [num_expert]
+    torch::Tensor &topk_weights,    // [num_tokens, topk]
+    torch::Tensor &topk_ids,        // [num_tokens, topk]
+    int num_expert_group,
+    int topk_group,
+    bool renormalize,
+    const float routed_scaling_factor);
+
 void moe_align_block_size(torch::Tensor topk_ids, int64_t num_experts,
                           int64_t block_size, torch::Tensor sorted_token_ids,
                           torch::Tensor experts_ids,

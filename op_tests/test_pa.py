@@ -421,18 +421,19 @@ def run_aiter_naive(query,
 
 @perftest()
 def run_aiter_asm(query,
-                 key_cache,
-                 value_cache,
-                 block_tables,
-                 seq_lens,
-                 max_seq_len,
-                 kv_cache_dtype,
-                 num_kv_heads,
-                 scale,
-                 alibi_slopes,
-                 max_num_blocks,
-                 k_scale=None,
-                 v_scale=None):
+                  k_cache,
+                  v_cache,
+                  block_tables,
+                  seq_lens,
+                  max_seq_len,
+                  kv_cache_dtype,
+                  num_kv_heads,
+                  scale,
+                  alibi_slopes,
+                  max_num_blocks,
+                  k_scale=None,
+                  v_scale=None,
+                  high_precision=0):
     return aiter.pa_fwd_asm(
         query,
         key_cache,
@@ -441,7 +442,9 @@ def run_aiter_asm(query,
         seq_lens,
         max_num_blocks,
         k_scale,
-        v_scale
+        v_scale,
+        None,
+        high_precision
     )
 
 
