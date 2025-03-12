@@ -77,11 +77,7 @@ def test_topk_softmax(dtype, m, n, E, topk):
 
 
 @aiter.test_common.benchmark()
-<<<<<<< HEAD
-def test_biased_grouped_topk(token, expert, group, topk, topk_group, need_renorm, dtype):
-=======
 def test_biased_grouped_topk(token, expert, group, topk, topk_group, need_renorm, dtype, scale_factor=1.0):
->>>>>>> pr-175
     gating_output = torch.randn((token, expert), dtype=dtype)
     correction_bias = torch.randn((expert,), dtype=dtype)
 
@@ -109,11 +105,8 @@ def test_biased_grouped_topk(token, expert, group, topk, topk_group, need_renorm
                                group,
                                topk_group,
                                need_renorm,
-<<<<<<< HEAD
                                1.0
-=======
                                scale_factor
->>>>>>> pr-175
                                )
     id_ref, _ref = torch.sort(id_ref)
     id_aiter, _aiter = torch.sort(id_aiter)
@@ -124,8 +117,6 @@ def test_biased_grouped_topk(token, expert, group, topk, topk_group, need_renorm
     # print(f'  {w_ref=}')
     # print(f'{w_aiter=}')
     checkAllclose(w_ref, w_aiter,
-<<<<<<< HEAD
-=======
                   msg=f'topk_weights [golden vs aiter]')
     checkAllclose(id_ref, id_aiter,
                   msg=f'topk_ids     [golden vs aiter]:{us_ref:.2f} us vs {us_aiter:.2f} us......')
@@ -164,7 +155,6 @@ def test_grouped_topk(token, expert, group, topk, topk_group, need_renorm, dtype
     id_ref, _ref = torch.sort(id_ref)
     id_aiter, _aiter = torch.sort(id_aiter)
     checkAllclose(w_ref.gather(1, _ref), w_aiter.gather(1, _aiter),
->>>>>>> pr-175
                   msg=f'topk_weights [golden vs aiter]')
     checkAllclose(id_ref, id_aiter,
                   msg=f'topk_ids     [golden vs aiter]:{us_ref:.2f} us vs {us_aiter:.2f} us......')
