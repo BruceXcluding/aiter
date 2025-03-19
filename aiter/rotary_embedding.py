@@ -657,16 +657,14 @@ class DeepseekScalingRotaryEmbedding(RotaryEmbedding):
         return inv_freq
 
     def _compute_cos_sin_cache(self) -> torch.Tensor:
-        inv_freq = self._compute_inv_freq(self.scaling_factor)
-        t = torch.arange(self.max_position_embeddings * self.scaling_factor,
-                         device="cuda",
-                         dtype=torch.float32)
+        """Compute the cos and sin cache."""
+        inv_freq = self._compute_inv_freq(self.base)
+        t = torch.arange(self.max_position_embeddings, dtype=torch.float)
+
         freqs = torch.einsum("i,j -> ij", t, inv_freq)
-        cos = (freqs.cos() * self.mscale)
-        sin = (freqs.sin() * self.mscale)
-        cache = torch.cat((cos, sin), dim=-1)
-        print("Cache shape", cache.shape)
-        return cache
+        cos = freqs.cos().unsqueeze(-2).unsqueeze(-2)
+        sin = freqs.sin().unsqueeze(-2).unsqueeze(-2)
+        return cos, sin
 
     def forward(
         self,
@@ -682,19 +680,22 @@ class DeepseekScalingRotaryEmbedding(RotaryEmbedding):
             query_pass = query[..., self.rotary_dim:]
             key_pass = key[..., self.rotary_dim:]
 
-        self.cos_sin_cache: torch.Tensor = self.cos_sin_cache.to(
-            positions.device)
-        cos_sin = self.cos_sin_cache[torch.add(positions, offsets)
-                                     if offsets is not None else positions]
-        cos, sin = cos_sin.chunk(2, dim=-1)
+        self.cos_cache = self.cos_cache.to(positions.device)
+        self.sin_cache = self.sin_cache.to(positions.device)
+
+        positions_with_offsets = torch.add(positions, offsets) \
+            if offsets is not None else positions
+        
+        cos = self.cos_cache[positions_with_offsets]
+        sin = self.sin_cache[positions_with_offsets]
         if self.is_neox_style:
             # NOTE(woosuk): Here we assume that the positions tensor has the
             # shape [batch_size, seq_len].
-            cos = cos.repeat(1, 1, 2).unsqueeze(-2)
-            sin = sin.repeat(1, 1, 2).unsqueeze(-2)
+            cos = cos.repeat(1, 1, 2).squeeze(-2)
+            sin = sin.repeat(1, 1, 2).squeeze(-2)
         else:
-            cos = cos.repeat_interleave(2, dim=-1).unsqueeze(-2)
-            sin = sin.repeat_interleave(2, dim=-1).unsqueeze(-2)
+            cos = cos.repeat_interleave(2, dim=-1).squeeze(-2)
+            sin = sin.repeat_interleave(2, dim=-1).squeeze(-2)
 
         rotate_fn = _rotate_neox if self.is_neox_style else _rotate_gptj
         query_rot = query_rot * cos + rotate_fn(query_rot) * sin
@@ -963,8 +964,13 @@ def get_rope(
         rotary_emb = RotaryEmbedding(head_size, rotary_dim, max_position, base,
                                      is_neox_style, dtype)
     else:
-        scaling_type = rope_scaling[
-            "type"] if "type" in rope_scaling else rope_scaling["rope_type"]
+        if "rope_type" in rope_scaling:
+            scaling_type = rope_scaling["rope_type"]
+        elif "type" in rope_scaling:
+            scaling_type = rope_scaling["type"]
+        else:
+            raise ValueError("Unknown RoPE scaling type")
+        
         # The correct one should be "longrope" but keep "su" here
         # for backward compatible
         if scaling_type not in {"su", "longrope"}:
