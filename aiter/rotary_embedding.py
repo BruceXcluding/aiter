@@ -658,12 +658,12 @@ class DeepseekScalingRotaryEmbedding(RotaryEmbedding):
 
     def _compute_cos_sin_cache(self) -> torch.Tensor:
         """Compute the cos and sin cache."""
-        inv_freq = self._compute_inv_freq(self.base)
-        t = torch.arange(self.max_position_embeddings, dtype=torch.float)
+        inv_freq = self._compute_inv_freq(self.scaling_factor)
+        t = torch.arange(self.max_position_embeddings * self.scaling_factor, dtype=torch.float)
 
         freqs = torch.einsum("i,j -> ij", t, inv_freq)
-        cos = freqs.cos().unsqueeze(-2).unsqueeze(-2)
-        sin = freqs.sin().unsqueeze(-2).unsqueeze(-2)
+        cos = freqs.cos().unsqueeze(-2).unsqueeze(-2) * self.mscale
+        sin = freqs.sin().unsqueeze(-2).unsqueeze(-2) * self.mscale
         return cos, sin
 
     def forward(
